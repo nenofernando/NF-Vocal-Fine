@@ -1,4 +1,5 @@
 #pragma once
+#include "ManualModel.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../ThirdParty/signalsmith-stretch/signalsmith-stretch.h"
 
@@ -47,7 +48,7 @@ struct NaturalEngine {
     void reset(){stretch.reset();detector.reset();meterOriginal.reset();meterOutput.reset();originalMeasured=outputMeasured=-1;meterHop=0;wasMetering=false;dry.clear();dryPosition=hop=0;shift=0;centre=target=-1;note=-1;correction=certainty=0;}
     static bool allowed(int pc,const TuneSettings& s){pc=(pc%12+12)%12;if(!(s.mask&(1u<<pc)))return false;int rel=(pc-s.key+12)%12;return s.scale==0||(s.scale==1?((0xab5>>rel)&1):((0x5ad>>rel)&1));}
     static float nearest(float m,const TuneSettings& s){float best=m,dist=100;int n=int(std::round(m));for(int i=n-12;i<=n+12;++i)if(allowed(i,s)&&std::abs(i-m)<dist){best=float(i);dist=std::abs(i-m);}return best;}
-    void process(juce::AudioBuffer<float>& audio,const TuneSettings& s){
+    void process(juce::AudioBuffer<float>& audio,const TuneSettings& s,const ManualSnapshot* manual=nullptr,double blockStart=0){
         juce::ScopedNoDenormals guard;
         const bool measuring=meteringEnabled.load(std::memory_order_relaxed);
         if(measuring!=wasMetering){meterOriginal.reset();meterOutput.reset();originalMeasured=outputMeasured=-1;meterHop=0;wasMetering=measuring;}
@@ -66,7 +67,11 @@ struct NaturalEngine {
             if(detector.midi>=0&&target>=0){float reference=detector.midi*(1-s.human)+centre*s.human;float error=target-reference;
                 float dead=0.035f*s.human;wanted=(std::abs(error)>dead?error-std::copysign(dead,error):0)*s.amount;wanted=juce::jlimit(-3.0f,3.0f,wanted);}
             shift+=float(1-std::exp(-n/(rate*std::max(0.005f,s.speed*0.001f))))*(wanted-shift);correction=shift;
-            stretch.setTransposeSemitones(shift);stretch.setFormantSemitones(s.formant,true);
+            float appliedShift=shift;
+            if(manual){float manualShift=0;double sourceTime=blockStart+(offset+n*0.5-stretch.inputLatency())/rate;
+                if(manual->valueAt(sourceTime,manualShift))appliedShift+=(manualShift-appliedShift)*manual->weight;}
+            correction=appliedShift;
+            stretch.setTransposeSemitones(appliedShift);stretch.setFormantSemitones(s.formant,true);
             std::array<const float*,2> in{};std::array<float*,2> out{};
             for(int c=0;c<channels;++c){in[c]=audio.getReadPointer(c,offset);out[c]=scratch.getWritePointer(c);}
             stretch.process(in.data(),n,out.data(),n);

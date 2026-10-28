@@ -3,6 +3,8 @@ class FineProcessor : public juce::AudioProcessor {
 public:
     juce::AudioProcessorValueTreeState state;
     NaturalEngine engine;
+    ManualDocument manual;ManualSnapshot manualAudio;
+    double expectedTime=0;int captureSamples=0;bool hadTransport=false;
     std::array<std::atomic<float>*,19> controls{};
     static juce::AudioProcessorValueTreeState::ParameterLayout layout(){
         juce::AudioProcessorValueTreeState::ParameterLayout p;
@@ -14,25 +16,36 @@ public:
     }
     FineProcessor():AudioProcessor(BusesProperties().withInput("Entrada",juce::AudioChannelSet::stereo(),true).withOutput("Saida",juce::AudioChannelSet::stereo(),true)),state(*this,nullptr,"VocalNatural",layout()){
         const char* ids[]={"key","scale","amount","speed","human","formant","mix"};for(int i=0;i<7;++i)controls[i]=state.getRawParameterValue(ids[i]);for(int i=0;i<12;++i)controls[i+7]=state.getRawParameterValue("note"+juce::String(i));
+        manual.onEdit=[this]{updateHostDisplay(juce::AudioProcessorListener::ChangeDetails{}.withNonParameterStateChanged(true));};
     }
     const juce::String getName()const override{return "NF Vocal Fine";}
     bool acceptsMidi()const override{return false;} bool producesMidi()const override{return false;}
     double getTailLengthSeconds()const override{return engine.latency/engine.rate;}
     int getNumPrograms()override{return 1;}int getCurrentProgram()override{return 0;}void setCurrentProgram(int)override{}const juce::String getProgramName(int)override{return "Natural";}void changeProgramName(int,const juce::String&)override{}
     bool isBusesLayoutSupported(const BusesLayout& l)const override{return l.getMainInputChannelSet()==l.getMainOutputChannelSet()&&(l.getMainOutputChannelSet()==juce::AudioChannelSet::mono()||l.getMainOutputChannelSet()==juce::AudioChannelSet::stereo());}
-    void prepareToPlay(double sr,int)override{engine.prepare(sr,getTotalNumOutputChannels());setLatencySamples(engine.latency);}
-    void releaseResources()override{}void reset()override{engine.reset();}
+    void prepareToPlay(double sr,int)override{engine.prepare(sr,getTotalNumOutputChannels());hadTransport=false;captureSamples=0;setLatencySamples(engine.latency);}
+    void releaseResources()override{}void reset()override{engine.reset();hadTransport=false;captureSamples=0;}
     float value(int index)const{return controls[index]->load();}
     void processBlock(juce::AudioBuffer<float>& b,juce::MidiBuffer&)override{
         TuneSettings s;s.key=int(value(0));s.scale=int(value(1));s.amount=value(2)/100;s.speed=value(3);s.human=value(4)/100;s.formant=value(5);s.mix=value(6)/100;s.mask=0;
         for(int i=0;i<12;++i)if(value(i+7)>0.5f)s.mask|=1u<<i;
-        engine.process(b,s);
+        auto* playHead=getPlayHead();auto position=playHead?playHead->getPosition():juce::Optional<juce::AudioPlayHead::PositionInfo>{};
+        bool valid=false,running=false;double time=0;
+        if(position){if(auto seconds=position->getTimeInSeconds()){time=*seconds;valid=std::isfinite(time);}else if(auto samples=position->getTimeInSamples()){time=double(*samples)/getSampleRate();valid=true;}running=position->getIsPlaying()||position->getIsRecording();}
+        manual.timelineAvailable=valid;manual.playing=running;manual.cursor=time;
+        if(valid&&running){if(!hadTransport||std::abs(time-expectedTime)>std::max(0.010,2.0*b.getNumSamples()/getSampleRate())){engine.reset();captureSamples=0;}expectedTime=time+b.getNumSamples()/getSampleRate();hadTransport=true;}else hadTransport=false;
+        manual.readForAudio(manualAudio);
+        engine.process(b,s,valid&&running?&manualAudio:nullptr,time);
+        if(valid&&running&&manual.capturing.load()&&!isNonRealtime()){
+            captureSamples+=b.getNumSamples();if(captureSamples>=getSampleRate()/30){captureSamples=0;double centreTime=time+b.getNumSamples()/getSampleRate()-512.0*engine.detector.decimation/getSampleRate();manual.push({centreTime,engine.note.load()});}
+        }
     }
-    void getStateInformation(juce::MemoryBlock& m)override{auto xml=state.copyState().createXml();copyXmlToBinary(*xml,m);}
-    void setStateInformation(const void* data,int bytes)override{if(auto xml=getXmlFromBinary(data,bytes))if(xml->hasTagName(state.state.getType()))state.replaceState(juce::ValueTree::fromXml(*xml));}
+    void getStateInformation(juce::MemoryBlock& m)override{auto snapshot=state.copyState();snapshot.addChild(manual.save(),-1,nullptr);auto xml=snapshot.createXml();copyXmlToBinary(*xml,m);}
+    void setStateInformation(const void* data,int bytes)override{if(auto xml=getXmlFromBinary(data,bytes))if(xml->hasTagName(state.state.getType())){auto restored=juce::ValueTree::fromXml(*xml);manual.restore(restored.getChildWithName("ManualV1"));restored.removeChild(restored.getChildWithName("ManualV1"),nullptr);state.replaceState(restored);}}
     bool hasEditor()const override{return true;}juce::AudioProcessorEditor* createEditor()override;
 };
 #include "FineLook.h"
+#include "ManualPanel.h"
 #if !NF_PREVIEW
 #include <FineAssets.h>
 #endif
@@ -41,6 +54,7 @@ class FinePanel final : public juce::Component,private juce::Timer {
     fine::Look look;
     juce::Image logo;
     juce::ComboBox key,scale;
+    ManualPanel manualPanel;juce::TextButton manualButton{"Manual por trecho"};
     juce::TooltipWindow tips{this,650};
     std::array<juce::Slider,5> knobs;
     std::array<juce::TextButton,12> notes;
@@ -56,8 +70,11 @@ class FinePanel final : public juce::Component,private juce::Timer {
     void text(juce::Graphics& g,const juce::String& s,juce::Rectangle<float> r,float size,juce::Colour colour,bool bold=false,int align=juce::Justification::centredLeft){g.setColour(colour);g.setFont(bold?juce::FontOptions(size).withStyle("Bold"):juce::FontOptions(size));g.drawText(s,r,align);}
     void card(juce::Graphics& g,juce::Rectangle<float> r){g.setGradientFill(juce::ColourGradient(juce::Colour(0xff182335),r.getX(),r.getY(),juce::Colour(0xff101a29),r.getRight(),r.getBottom(),false));g.fillRoundedRectangle(r,14);g.setColour(juce::Colour(0xff2b3950));g.drawRoundedRectangle(r.reduced(0.5f),14,1);}
 public:
-    explicit FinePanel(FineProcessor& processor):p(processor){
+    explicit FinePanel(FineProcessor& processor):p(processor),manualPanel(processor.manual){
         setLookAndFeel(&look);
+        addAndMakeVisible(manualPanel);manualPanel.setVisible(false);
+        addAndMakeVisible(manualButton);manualButton.setClickingTogglesState(true);
+        manualButton.onClick=[this]{bool show=manualButton.getToggleState();manualPanel.setVisible(show);manualButton.setButtonText(show?"Voltar ao monitor":"Manual por trecho");if(!show&&p.manual.capturing.exchange(false)){p.manual.drain();if(p.manual.onEdit)p.manual.onEdit();}};
 #if NF_PREVIEW
         logo=juce::ImageFileFormat::loadFrom(juce::File::getCurrentWorkingDirectory().getChildFile("Assets/Logo.png"));
 #else
@@ -81,6 +98,7 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& e)override{if(juce::Rectangle<int>(28,13,135,77).contains(e.getPosition())&&onLogoDoubleClick)onLogoDoubleClick();}
     void mouseMove(const juce::MouseEvent& e)override{setMouseCursor(juce::Rectangle<int>(28,13,135,77).contains(e.getPosition())?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor);}
     void timerCallback()override{
+        if(!manualButton.getToggleState()){int count=int(p.manual.getEdits().size());manualButton.setButtonText(count?"Manual: "+juce::String(count)+" ajuste(s)":"Manual por trecho");}
         float original=p.engine.originalMeasured.load(),corrected=p.engine.outputMeasured.load();
         float missing=std::numeric_limits<float>::quiet_NaN();
         float reference=original>=0?std::round(original):corrected>=0?std::round(corrected):0;
@@ -94,6 +112,7 @@ public:
         head=(head+1)%history.size();repaint(24,110,1012,224);
     }
     void resized()override{
+        manualPanel.setBounds(24,119,1012,213);manualButton.setBounds(690,68,160,24);
         key.setBounds(195,373,86,35);scale.setBounds(293,373,190,35);
         for(int i=0;i<12;++i)notes[i].setBounds(506+i*42,369,36,45);
         for(int i=0;i<5;++i)knobs[i].setBounds(45+i*204,477,154,140);
@@ -105,7 +124,7 @@ public:
         text(g,"NF Vocal Fine",{260,26,540,40},30,fine::ink(),true,juce::Justification::centred);
         text(g,juce::String::fromUTF8("AFINAÇÃO VOCAL  /  EXPRESSÃO NATURAL"),{260,65,540,18},10.5f,fine::muted(),false,juce::Justification::centred);
         g.setColour(juce::Colour(0xff162d46));g.fillRoundedRectangle(877,34,159,29,14);g.setColour(fine::blue());g.fillEllipse(890,45,6,6);
-        text(g,juce::String::fromUTF8("PRÉVIA  0.2.2"),{905,35,120,26},11,fine::blue(),true);
+        text(g,juce::String::fromUTF8("PRÉVIA  0.3.0"),{905,35,120,26},11,fine::blue(),true);
         g.setColour(juce::Colour(0xff243247));g.drawHorizontalLine(100,24,1036);
         card(g,{24,119,1012,213});
         g.setColour(juce::Colour(0xff2c3c52));g.drawVerticalLine(220,146,306);g.drawVerticalLine(822,146,306);

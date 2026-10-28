@@ -6,7 +6,28 @@ Plugin de afinação vocal da **NF Audio Tools**, em VST3, com interface escura 
 
 Imagem obtida com um sinal sintético de teste, mostrando as duas medições reais de afinação.
 
-A versão **0.2.2** aplica o visual aprovado Halo duplo à régua: duas luzes neon na mesma faixa, azul para o original e verde para a voz corrigida, com deslocamento suave e desaparecimento gradual sem sinal. Mantém a interface compacta, título centralizado e os dois monitores de afinação. O processamento de afinação mantém os mesmos controles: correção por tom e escala, seleção de notas, intensidade, tempo de transição, preservação de vibrato, compensação de formantes e mistura com a voz original.
+A versão **0.3.0** acrescenta edição manual por posição na sessão: capture o mapa de afinação, selecione uma nota ou um intervalo e aplique **−1 / +1 semitom**, inclusive fora da escala. Mantém a interface compacta, redimensionamento, reset pelo logo, curvas medidas e Halo duplo.
+
+## Ajustar uma nota específica
+
+1. Abra **Manual por trecho** no cabeçalho.
+2. Clique **Capturar** e reproduza o trecho vocal pela DAW. Pare a captura quando a passagem aparecer no mapa.
+3. Clique em uma nota detectada para selecionar sua extensão, ou arraste um intervalo com o mouse.
+4. Use **−1 semitom** ou **+1 semitom** e reproduza a passagem novamente.
+5. Use **Remover** para devolver somente a seleção à afinação automática, ou **Desfazer** para restaurar a edição anterior.
+
+![Editor manual por trecho, com sinal sintético de teste](Assets/Manual.png)
+
+O deslocamento manual é aplicado à voz original no intervalo escolhido, preservando suas pequenas variações; ele tem prioridade sobre a escala e a intensidade da correção automática nesse intervalo. Os demais trechos continuam usando os controles automáticos. Os cliques são cumulativos até ±12 semitons. Um ajuste manual de 0 st preserva a afinação original nesse intervalo; Remover restaura a afinação automática.
+
+**Verde no mapa manual é o destino previsto**, não uma medição de áudio já renderizado. Para comparar as medições reais, volte ao monitor e reproduza. O gráfico manual, os intervalos e seus deslocamentos ficam salvos no estado do plugin. O botão do cabeçalho informa quando há ajustes manuais, mesmo ao voltar ao monitor.
+
+### Posição na DAW
+
+A edição usa o tempo da sessão fornecido pelo host VST3. Ela é reaplicada ao voltar para a mesma posição e também na renderização quando o host fornece transporte/posição válidos. Sem essa informação, o modo manual aguarda a DAW e não aplica deslocamentos em posições inventadas. O transporte parado não aplica ajustes manuais à entrada ao vivo.
+
+Os ajustes ficam ligados ao tempo da sessão, não à identidade de um clipe. Depois de mover um clipe ou mudar a montagem, confira e refaça os intervalos correspondentes. Capture apenas a passagem desejada; Enquadrar, Zoom +/− e a roda do mouse ajudam a navegar. A captura guarda metadados de afinação, não o áudio, com até 36 mil pontos e 128 intervalos de ajuste. O histórico local permite desfazer 64 alterações. Notas muito curtas e limites entre sílabas ainda exigem avaliação auditiva e ajuste da seleção.
+
 
 ## Primeiro teste
 
@@ -46,9 +67,10 @@ Para evitar duas cópias da mesma prévia no host, retire o VST3 antigo NF Vocal
 
 ```sh
 cmake -S . -B build -DNF_BUILD_TESTS=ON -DJUCE_DIR=/caminho/para/JUCE
-cmake --build build --target VocalFineTests VocalFineEditorChecks -j 6
+cmake --build build --target VocalFineTests VocalFineEditorChecks VocalFineManualChecks -j 6
 build/VocalFineTests_artefacts/Release/VocalFineTests "$(pwd)/build/NFVocalFine_artefacts/Release/VST3/NF Vocal Fine.vst3"
 build/VocalFineEditorChecks_artefacts/Release/VocalFineEditorChecks "$(pwd)/work/ui-checks"
+build/VocalFineManualChecks_artefacts/Release/VocalFineManualChecks "$(pwd)/work/manual.png"
 ```
 
 As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz, latência por impulso, estéreo, reset, vibrato, escalas, carregamento do VST3, parâmetros, persistência, abertura compacta no host, medições das curvas e ausência de mudanças no áudio ao ativar a monitoração. Os testes do editor exercitam a alça, os limites de tamanho, o duplo clique no logo, a escala de tela e o enquadramento dos controles. O host de teste é baseado em JUCE; isso não substitui o teste dentro da DAW do usuário.
@@ -60,6 +82,8 @@ As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz
 - `Source/FineLook.h`: desenho dos controles.
 - `Source/Tests.cpp`: testes do motor e do VST3.
 - `Source/EditorChecks.cpp`: testes de interação e imagens de verificação do editor.
+- `Source/ManualModel.h` e `Source/ManualPanel.h`: captura, intervalos, estado e editor manual.
+- `Source/ManualChecks.cpp`: seleção de trecho, deslocamento real de áudio, transporte e persistência.
 - `Assets/Logo.png`: logo original fornecido pelo usuário, incorporado ao binário.
 - `ThirdParty/`: bibliotecas e termos de terceiros.
 
