@@ -1,17 +1,38 @@
-# Validação da prévia 0.2.0
+# Validação da prévia 0.2.1
 
-Verificação local em 27/10/2026, macOS Intel (x86_64), JUCE 9.
+Verificação local em 28/10/2026, macOS Intel (x86_64), JUCE 9.
 
-- **40 verificações automatizadas passaram**, incluindo o nome NF Vocal Fine no host.
-- Detecção e correção de áudio em 44,1, 48 e 96 kHz.
+**61 verificações passaram:** 47 do motor/host VST3 e 14 de interação com o editor.
+
+## Interface
+
+- Abertura padrão em 848 × 544 confirmada tanto no editor direto quanto no host VST3.
+- Nome e descrição centralizados no cabeçalho.
+- Alça azul visível, redimensionamento proporcional entre 636 × 408 e 1590 × 1020.
+- Arraste para aumentar/diminuir e limites mínimo/máximo exercitados por eventos de mouse.
+- Duplo clique no logo restaura 848 × 544. Clique simples e duplo clique fora do logo preservam o tamanho escolhido.
+- Transformação do conteúdo preserva a escala de tela do host.
+- Layout e enquadramento conferidos nos tamanhos mínimo, padrão e máximo.
+- Duas curvas e régua de -50 a +50 cents: original azul, saída corrigida verde.
+- A imagem da documentação usa um sinal sintético; nenhuma voz do usuário é publicada.
+
+## Áudio e medições
+
+- Afinação e correção verificadas em 44,1, 48 e 96 kHz.
 - Latência de 120 ms confirmada por impulso, no áudio processado e no original.
-- Estéreo, silêncio após reset, preservação de vibrato, seleção de escala e notas.
-- Carregamento VST3, 19 controles mais bypass, recuperação de estado e abertura da interface.
-- Assinatura local ad-hoc verificada após a geração do manifesto.
-- Interface conferida visualmente, com o logo original incorporado ao binário.
-- Motor de áudio idêntico ao da prévia 0.1.0; as mudanças desta versão são nome e interface.
-- Os identificadores VST3 de processador e controlador foram preservados na renomeação. Não instale as duas prévias na mesma pasta de busca.
+- Estéreo, silêncio após reset, vibrato, escala e habilitação de notas.
+- Duas medições reais de pitch; a origem é atrasada em 120 ms para comparar o mesmo instante da saída.
+- Mix em zero produz leituras idênticas nas duas medições, inclusive ao mudar de nota.
+- Habilitar a monitoração mantém o áudio numericamente idêntico ao processamento sem monitoração.
+- A análise adicional só funciona com o editor aberto e é desligada ao fechá-lo.
+- Reset limpa as leituras e o histórico é reconstruído ao abrir o editor.
 
-Os testes automatizados usam sinais sintéticos e um host de teste JUCE. Não são certificação de compatibilidade com todas as DAWs nem confirmação de naturalidade em voz real. A aprovação auditiva do usuário precede qualquer integração nativa na Mixa Studio.
+## Host e distribuição
 
-Não há gravações do usuário neste repositório.
+- Bundle VST3 carregado e instanciado em host de teste JUCE.
+- 19 controles mais bypass e recuperação do estado salvo.
+- Editor abre em 848 × 544 e anuncia suporte a redimensionamento ao host.
+- Assinatura local ad-hoc verificada depois da geração do manifesto.
+- Identificadores VST3 e de parâmetros preservados. Não instale duas prévias na mesma pasta de busca.
+
+Os testes não certificam compatibilidade com todas as DAWs nem naturalidade em todas as vozes. A integração nativa na Mixa Studio aguarda aprovação do usuário.

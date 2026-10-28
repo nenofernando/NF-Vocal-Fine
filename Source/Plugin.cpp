@@ -36,7 +36,7 @@ public:
 #if !NF_PREVIEW
 #include <FineAssets.h>
 #endif
-class FineEditor final : public juce::AudioProcessorEditor,private juce::Timer {
+class FinePanel final : public juce::Component,private juce::Timer {
     FineProcessor& p;
     fine::Look look;
     juce::Image logo;
@@ -44,7 +44,7 @@ class FineEditor final : public juce::AudioProcessorEditor,private juce::Timer {
     juce::TooltipWindow tips{this,650};
     std::array<juce::Slider,5> knobs;
     std::array<juce::TextButton,12> notes;
-    std::array<float,180> history{};
+    std::array<float,180> history{},correctedHistory{};
     size_t head=0;
     using SA=juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA=juce::AudioProcessorValueTreeState::ComboBoxAttachment;
@@ -55,27 +55,38 @@ class FineEditor final : public juce::AudioProcessorEditor,private juce::Timer {
     void text(juce::Graphics& g,const juce::String& s,juce::Rectangle<float> r,float size,juce::Colour colour,bool bold=false,int align=juce::Justification::centredLeft){g.setColour(colour);g.setFont(bold?juce::FontOptions(size).withStyle("Bold"):juce::FontOptions(size));g.drawText(s,r,align);}
     void card(juce::Graphics& g,juce::Rectangle<float> r){g.setGradientFill(juce::ColourGradient(juce::Colour(0xff182335),r.getX(),r.getY(),juce::Colour(0xff101a29),r.getRight(),r.getBottom(),false));g.fillRoundedRectangle(r,14);g.setColour(juce::Colour(0xff2b3950));g.drawRoundedRectangle(r.reduced(0.5f),14,1);}
 public:
-    explicit FineEditor(FineProcessor& processor):AudioProcessorEditor(processor),p(processor){
+    explicit FinePanel(FineProcessor& processor):p(processor){
         setLookAndFeel(&look);
 #if NF_PREVIEW
         logo=juce::ImageFileFormat::loadFrom(juce::File::getCurrentWorkingDirectory().getChildFile("Assets/Logo.png"));
 #else
         logo=juce::ImageCache::getFromMemory(FineAssets::Logo_png,FineAssets::Logo_pngSize);
 #endif
-        history.fill(std::numeric_limits<float>::quiet_NaN());
+        history.fill(std::numeric_limits<float>::quiet_NaN());correctedHistory.fill(std::numeric_limits<float>::quiet_NaN());
+        p.engine.meteringEnabled=true;
         key.addItemList({"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"},1);
         scale.addItemList({juce::String::fromUTF8("Cromática"),"Maior","Menor natural"},1);
         key.setTooltip("Tom da musica");scale.setTooltip("Escala usada para escolher as notas de destino");
         addAndMakeVisible(key);addAndMakeVisible(scale);keyAttachment=std::make_unique<CA>(p.state,"key",key);scaleAttachment=std::make_unique<CA>(p.state,"scale",scale);
         const char* ids[]={"amount","speed","human","formant","mix"};
         const char* help[]={"Intensidade da afinacao. Para comecar, use 65 a 85%.","Tempos maiores preservam a passagem natural entre as notas.","Preserva vibrato e pequenas variacoes expressivas da voz.","Zero preserva o timbre. Outros valores mudam a ressonancia da voz.","Mistura com a voz original, alinhada a latencia do efeito."};
-        for(int i=0;i<5;++i){auto& k=knobs[i];k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,145,31);k.setColour(juce::Slider::textBoxOutlineColourId,juce::Colours::transparentBlack);addAndMakeVisible(k);sliders.push_back(std::make_unique<SA>(p.state,ids[i],k));k.textFromValueFunction=[i](double v){return juce::String(v,i==3?1:0)+(i==1?" ms":i==3?" st":" %");};k.updateText();k.setTooltip(help[i]);}
+        for(int i=0;i<5;++i){auto& k=knobs[i];k.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);k.setTextBoxStyle(juce::Slider::TextBoxBelow,false,145,31);k.setColour(juce::Slider::textBoxOutlineColourId,juce::Colours::transparentBlack);addAndMakeVisible(k);sliders.push_back(std::make_unique<SA>(p.state,ids[i],k));k.textFromValueFunction=[i](double v){return (i==3?juce::String(v,1):juce::String(juce::roundToInt(v)))+(i==1?" ms":i==3?" st":" %");};k.updateText();k.setTooltip(help[i]);}
         juce::StringArray ns{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
         for(int i=0;i<12;++i){notes[i].setButtonText(ns[i]);notes[i].setClickingTogglesState(true);notes[i].setTooltip("Permitir a nota "+ns[i]+" dentro da escala selecionada");addAndMakeVisible(notes[i]);buttons.push_back(std::make_unique<BA>(p.state,"note"+juce::String(i),notes[i]));}
         setSize(1060,680);startTimerHz(30);
     }
-    ~FineEditor()override{stopTimer();setLookAndFeel(nullptr);}
-    void timerCallback()override{float m=p.engine.note.load();history[head]=m>=0?(m-std::round(m))*100:std::numeric_limits<float>::quiet_NaN();head=(head+1)%history.size();repaint(24,110,1012,224);}
+    ~FinePanel()override{stopTimer();p.engine.meteringEnabled=false;setLookAndFeel(nullptr);}
+    std::function<void()> onLogoDoubleClick;
+    void mouseDoubleClick(const juce::MouseEvent& e)override{if(juce::Rectangle<int>(28,13,135,77).contains(e.getPosition())&&onLogoDoubleClick)onLogoDoubleClick();}
+    void mouseMove(const juce::MouseEvent& e)override{setMouseCursor(juce::Rectangle<int>(28,13,135,77).contains(e.getPosition())?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor);}
+    void timerCallback()override{
+        float original=p.engine.originalMeasured.load(),corrected=p.engine.outputMeasured.load();
+        float missing=std::numeric_limits<float>::quiet_NaN();
+        float reference=original>=0?std::round(original):corrected>=0?std::round(corrected):0;
+        history[head]=original>=0?(original-reference)*100:missing;
+        correctedHistory[head]=corrected>=0?(corrected-reference)*100:missing;
+        head=(head+1)%history.size();repaint(24,110,1012,224);
+    }
     void resized()override{
         key.setBounds(195,373,86,35);scale.setBounds(293,373,190,35);
         for(int i=0;i<12;++i)notes[i].setBounds(506+i*42,369,36,45);
@@ -85,31 +96,50 @@ public:
         g.setGradientFill(juce::ColourGradient(juce::Colour(0xff111b2a),0,0,juce::Colour(0xff080e18),float(getWidth()),float(getHeight()),false));g.fillAll();
         g.setGradientFill(juce::ColourGradient(juce::Colour(0xff1765aa).withAlpha(0.16f),760,0,juce::Colours::transparentBlack,760,350,true));g.fillRect(getLocalBounds());
         g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);g.drawImageWithin(logo,28,13,135,77,juce::RectanglePlacement::centred);
-        text(g,"NF Vocal Fine",{189,26,430,40},30,fine::ink(),true);
-        text(g,juce::String::fromUTF8("AFINAÇÃO VOCAL  /  EXPRESSÃO NATURAL"),{191,65,500,18},10.5f,fine::muted());
+        text(g,"NF Vocal Fine",{260,26,540,40},30,fine::ink(),true,juce::Justification::centred);
+        text(g,juce::String::fromUTF8("AFINAÇÃO VOCAL  /  EXPRESSÃO NATURAL"),{260,65,540,18},10.5f,fine::muted(),false,juce::Justification::centred);
         g.setColour(juce::Colour(0xff162d46));g.fillRoundedRectangle(877,34,159,29,14);g.setColour(fine::blue());g.fillEllipse(890,45,6,6);
-        text(g,juce::String::fromUTF8("PRÉVIA  0.2"),{905,35,120,26},11,fine::blue(),true);
+        text(g,juce::String::fromUTF8("PRÉVIA  0.2.1"),{905,35,120,26},11,fine::blue(),true);
         g.setColour(juce::Colour(0xff243247));g.drawHorizontalLine(100,24,1036);
         card(g,{24,119,1012,213});
         g.setColour(juce::Colour(0xff2c3c52));g.drawVerticalLine(220,146,306);g.drawVerticalLine(822,146,306);
-        float m=p.engine.note.load(),shift=p.engine.correction.load();
+        float m=p.engine.originalMeasured.load(),corrected=p.engine.outputMeasured.load();
+        float shift=m>=0&&corrected>=0?corrected-m:0;
         text(g,"NOTA DE ENTRADA",{47,142,165,20},10.5f,fine::muted(),true);
         juce::String caption=juce::String::fromUTF8("—");
         if(m>=0){static const char* ns[]={"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};int n=juce::roundToInt(m);caption=juce::String(ns[(n%12+12)%12])+juce::String(n/12-1);}
         text(g,caption,{44,170,175,91},66,fine::ink(),true);
         text(g,m>=0?juce::String(440*std::pow(2.0,(m-69)/12),1)+" Hz":"Aguardando voz",{48,271,164,22},13,m>=0?fine::blue():fine::muted());
-        text(g,juce::String::fromUTF8("AFINAÇÃO DE ENTRADA"),{248,140,350,20},10.5f,fine::muted(),true);
-        auto plot=juce::Rectangle<float>(252,179,538,103);
+        text(g,juce::String::fromUTF8("AFINAÇÃO DA VOZ"),{248,140,310,20},10.5f,fine::muted(),true);
+        g.setColour(fine::blue());g.fillEllipse(599,147,5,5);text(g,"Original",{611,140,85,20},10,fine::blue());
+        auto green=juce::Colour(0xff48e3ac);g.setColour(green);g.fillEllipse(700,147,5,5);text(g,"Corrigida",{712,140,88,20},10,green);
+        auto plot=juce::Rectangle<float>(252,177,538,77);
         for(int i=0;i<=4;++i){float y=plot.getY()+plot.getHeight()*i/4;g.setColour(juce::Colour(0xff29394f).withAlpha(i==2?1.0f:0.55f));g.drawHorizontalLine(int(y),plot.getX(),plot.getRight());}
         for(int i=0;i<=8;++i){g.setColour(juce::Colour(0xff253449).withAlpha(0.4f));g.drawVerticalLine(int(plot.getX()+i*plot.getWidth()/8),plot.getY(),plot.getBottom());}
-        juce::Path trace;bool pen=false,hasData=false;
-        for(size_t i=0;i<history.size();++i){float v=history[(head+i)%history.size()];if(!std::isfinite(v)){pen=false;continue;}hasData=true;float x=plot.getX()+plot.getWidth()*float(i)/(history.size()-1),y=plot.getCentreY()-juce::jlimit(-50.0f,50.0f,v)*plot.getHeight()/100;if(pen)trace.lineTo(x,y);else trace.startNewSubPath(x,y);pen=true;}
-        g.setColour(fine::blue().withAlpha(0.12f));g.strokePath(trace,juce::PathStrokeType(7));g.setColour(fine::blue());g.strokePath(trace,juce::PathStrokeType(2));
-        if(!hasData)text(g,"Reproduza uma voz solo",plot,13,fine::muted(),false,juce::Justification::centred);
-        text(g,"+50",{778,163,26,14},9,fine::muted());text(g,"-50",{778,285,26,14},9,fine::muted());
-        text(g,"ENTRADA  /  cents",{252,295,300,16},9,fine::muted());
-        text(g,juce::String::fromUTF8("CORREÇÃO APLICADA"),{846,142,175,20},10.5f,fine::muted(),true);
-        text(g,(shift>=0?"+":"")+juce::String(shift*100,0),{843,181,170,65},42,fine::blue(),true);
+        auto drawTrace=[&](const std::array<float,180>& data,juce::Colour colour){
+            juce::Path trace;bool pen=false,hasData=false;
+            for(size_t i=0;i<data.size();++i){float v=data[(head+i)%data.size()];if(!std::isfinite(v)){pen=false;continue;}hasData=true;
+                float x=plot.getX()+plot.getWidth()*float(i)/(data.size()-1),y=plot.getCentreY()-juce::jlimit(-100.0f,100.0f,v)*plot.getHeight()/200;
+                if(pen)trace.lineTo(x,y);else trace.startNewSubPath(x,y);pen=true;
+            }
+            g.setColour(colour.withAlpha(0.10f));g.strokePath(trace,juce::PathStrokeType(6));g.setColour(colour);g.strokePath(trace,juce::PathStrokeType(1.8f));return hasData;
+        };
+        bool hasOriginal=drawTrace(history,fine::blue()),hasCorrected=drawTrace(correctedHistory,green);
+        if(!hasOriginal&&!hasCorrected)text(g,"Reproduza uma voz solo",plot,13,fine::muted(),false,juce::Justification::centred);
+        text(g,"+100",{776,162,34,12},8,fine::muted());text(g,"-100",{776,255,34,12},8,fine::muted());
+        auto bar=juce::Rectangle<float>(252,278,538,10);
+        g.setColour(juce::Colour(0xff26364b));g.fillRoundedRectangle(bar,4);
+        g.setColour(green.withAlpha(0.15f));g.fillRoundedRectangle(bar.getCentreX()-bar.getWidth()*0.05f,bar.getY(),bar.getWidth()*0.1f,bar.getHeight(),2);
+        for(int i=0;i<=4;++i){float x=bar.getX()+bar.getWidth()*i/4;g.setColour(i==2?green.withAlpha(0.8f):fine::muted().withAlpha(0.45f));g.drawVerticalLine(int(x),275,291);}
+        float reference=m>=0?std::round(m):corrected>=0?std::round(corrected):0;
+        auto marker=[&](float note,juce::Colour colour,bool top){if(note<0)return;float cents=(note-reference)*100;float x=bar.getCentreX()+juce::jlimit(-50.0f,50.0f,cents)*bar.getWidth()/100;
+            g.setColour(colour);g.drawVerticalLine(int(x),274,292);juce::Path triangle;float y=top?270.0f:296.0f;triangle.addTriangle(x-3,y,x+3,y,x,top?y+4:y-4);g.fillPath(triangle);
+        };
+        marker(m,fine::blue(),true);marker(corrected,green,false);
+        text(g,"-50",{249,299,50,15},9,fine::muted());text(g,"-25",{365,299,50,15},9,fine::muted(),false,juce::Justification::centred);
+        text(g,"0",{496,299,50,15},9,green,true,juce::Justification::centred);text(g,"+25",{631,299,50,15},9,fine::muted(),false,juce::Justification::centred);text(g,"+50 cents",{728,299,65,15},9,fine::muted(),false,juce::Justification::centredRight);
+        text(g,juce::String::fromUTF8("CORREÇÃO MEDIDA"),{846,142,175,20},10.5f,fine::muted(),true);
+        text(g,(shift>=0?"+":"")+juce::String(juce::roundToInt(shift*100)),{843,181,170,65},42,fine::blue(),true);
         text(g,"cents",{848,246,150,21},12,fine::muted());
         g.setColour(m>=0?fine::blue():juce::Colour(0xff48556b));g.fillEllipse(848,288,5,5);
         text(g,m>=0?"Monitorando":"Sem sinal vocal",{860,278,160,24},11,fine::muted());
@@ -121,6 +151,26 @@ public:
         for(int i=0;i<5;++i){float x=24.0f+i*204;card(g,{x,452,196,184});text(g,juce::String::fromUTF8(names[i]),{x+8,465,180,18},10.5f,i==0?fine::blue():fine::ink(),true,juce::Justification::centred);text(g,juce::String::fromUTF8(hints[i]),{x+8,619,180,14},10,fine::muted(),false,juce::Justification::centred);}
         text(g,juce::String::fromUTF8("VOZ SOLO  •  PRESERVAÇÃO DE FORMANTES"),{28,650,620,18},10,fine::muted());
         text(g,juce::String::fromUTF8("Latência: ")+juce::String(p.getLatencySamples()*1000.0/p.engine.rate,0)+" ms",{800,650,232,18},10,fine::muted(),false,juce::Justification::centredRight);
+    }
+};
+class FineEditor final : public juce::AudioProcessorEditor {
+    fine::Look look;
+    FinePanel panel;
+public:
+    static constexpr int defaultWidth=848,defaultHeight=544;
+    explicit FineEditor(FineProcessor& processor):AudioProcessorEditor(processor),panel(processor){
+        setLookAndFeel(&look);
+        addAndMakeVisible(panel);
+        setResizable(true,true);
+        setResizeLimits(636,408,1590,1020);
+        getConstrainer()->setFixedAspectRatio(1060.0/680.0);
+        panel.onLogoDoubleClick=[this]{setSize(defaultWidth,defaultHeight);};
+        setSize(defaultWidth,defaultHeight);
+    }
+    ~FineEditor()override{setLookAndFeel(nullptr);}
+    void resized()override{
+        // Scale only the content; the host retains control of editor DPI scaling.
+        panel.setTransform(juce::AffineTransform::scale(float(getWidth())/1060.0f,float(getHeight())/680.0f));
     }
 };
 juce::AudioProcessorEditor* FineProcessor::createEditor(){return new FineEditor(*this);}

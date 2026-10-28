@@ -21,12 +21,25 @@ int main(int argc,char** argv){
   check(energyB<energyA*0.6,"natural control preserves vibrato with less corrective modulation");
  }
  TuneSettings s;s.scale=1;s.key=0;check(NaturalEngine::nearest(61.1f,s)==62,"major scale excludes C sharp");s.mask=0;check(NaturalEngine::nearest(61.1f,s)==61.1f,"all notes disabled leaves pitch alone");
+ {
+ NaturalEngine monitored,plain;monitored.prepare(48000,1);plain.prepare(48000,1);monitored.meteringEnabled=true;
+ TuneSettings settings;settings.speed=60;settings.human=0;settings.amount=1;
+ double difference=0;
+ for(int offset=0;offset<72000;offset+=256){juce::AudioBuffer<float> a(1,256),b(1,256);for(int i=0;i<256;++i)a.setSample(0,i,float(0.2*std::sin(2*juce::MathConstants<double>::pi*225*(offset+i)/48000)));b.makeCopyOf(a);monitored.process(a,settings);plain.process(b,settings);for(int i=0;i<256;++i)difference=std::max(difference,double(std::abs(a.getSample(0,i)-b.getSample(0,i))));}
+ check(difference<1e-7,"pitch monitoring leaves processed audio unchanged");
+ check(std::abs(monitored.originalMeasured.load()-(69+12*std::log2(225./440)))<0.04,"blue curve measures latency-aligned original pitch");
+ check(std::abs(monitored.outputMeasured.load()-57)<0.04,"green curve measures actual corrected output pitch");
+ monitored.reset();settings.mix=0;bool aligned=true;
+ for(int offset=0;offset<48000;offset+=256){juce::AudioBuffer<float> b(1,256);for(int i=0;i<256;++i){double t=(offset+i)/48000.;b.setSample(0,i,float(0.2*std::sin(2*juce::MathConstants<double>::pi*(t<0.5?225:330)*t)));}monitored.process(b,settings);if(monitored.originalMeasured.load()!=monitored.outputMeasured.load())aligned=false;}
+ check(aligned,"dry and output traces share the same audio timeline at mix zero");
+ monitored.reset();check(monitored.originalMeasured.load()<0&&monitored.outputMeasured.load()<0,"reset clears both pitch readouts");
+ }
  if(argc>1){
  juce::VST3PluginFormat format;juce::OwnedArray<juce::PluginDescription> types;format.findAllTypesForFile(types,argv[1]);check(types.size()==1,"VST3 bundle scan");
  if(types.size()){juce::String error;auto plugin=format.createInstanceFromDescription(*types[0],48000,257,error);check(plugin!=nullptr,"VST3 host instantiation");
  if(plugin){check(plugin->getName()=="NF Vocal Fine","VST3 product name");plugin->prepareToPlay(48000,257);juce::AudioBuffer<float> b(2,257);juce::MidiBuffer midi;b.clear();plugin->processBlock(b,midi);check(plugin->getLatencySamples()>0,"VST3 latency exposed to host");
  auto& params=plugin->getParameters();std::cout<<"host parameters "<<params.size()<<"\n";for(auto* control:params)std::cout<<control->getName(64)<<" | ";std::cout<<"\n";check(params.size()==20,"all controls exposed for automation");auto* param=params[2];param->setValueNotifyingHost(0.43f);juce::MemoryBlock saved;plugin->getStateInformation(saved);param->setValueNotifyingHost(0.9f);plugin->setStateInformation(saved.getData(),int(saved.getSize()));check(std::abs(param->getValue()-0.43f)<0.001f,"session state recall");
- std::unique_ptr<juce::AudioProcessorEditor> editor(plugin->createEditorAndMakeActive());check(editor!=nullptr,"VST3 editor opens");if(editor){editor->setVisible(true);editor->setVisible(false);}editor.reset();plugin->releaseResources();}
+ std::unique_ptr<juce::AudioProcessorEditor> editor(plugin->createEditorAndMakeActive());check(editor!=nullptr,"VST3 editor opens");if(editor){editor->setVisible(true);check(editor->getWidth()==848&&editor->getHeight()==544,"VST3 host opens compact editor size");check(editor->isResizable(),"VST3 host advertises editor resizing");editor->setVisible(false);}editor.reset();plugin->releaseResources();}
  }
  }
  return failures?1:0;

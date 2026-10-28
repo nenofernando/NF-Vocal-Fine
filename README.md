@@ -4,13 +4,21 @@ Plugin de afinação vocal da **NF Audio Tools**, em VST3, com interface escura 
 
 ![Interface do NF Vocal Fine](Assets/Interface.png)
 
-A versão **0.2.0** renomeia a prévia NF Vocal Natural e redesenha sua interface. O motor de áudio permanece o mesmo: correção por tom e escala, seleção de notas, intensidade, tempo de transição, preservação de vibrato, compensação de formantes e mistura com a voz original.
+Imagem obtida com um sinal sintético de teste, mostrando as duas medições reais de afinação.
+
+A versão **0.2.1** traz interface compacta e redimensionável, título centralizado, dois monitores de afinação e régua em cents. O processamento de afinação mantém os mesmos controles: correção por tom e escala, seleção de notas, intensidade, tempo de transição, preservação de vibrato, compensação de formantes e mistura com a voz original.
 
 ## Primeiro teste
 
 Use uma voz solo gravada, sem acompanhamento ou efeitos no mesmo arquivo. Escolha o tom e a escala da música. A configuração inicial é Correção 80%, Transição 110 ms, Naturalidade 70%, Formantes 0 st e Mix 100%.
 
-O monitor exibe a nota e a afinação da **entrada**. O valor à direita mostra o comando de correção aplicado pelo motor; não é uma segunda medição da saída.
+O monitor compara duas medições reais de afinação: **azul = voz original** e **verde = saída corrigida**, incluindo a posição do controle Mix. O original é atrasado internamente pela latência do processamento para as duas curvas representarem o mesmo instante do áudio. O valor à direita mostra a diferença medida entre as duas vozes quando há nota detectada. A régua horizontal, de -50 a +50 cents, usa as mesmas cores e marca o zero no centro; o histórico acima mostra até ±100 cents em relação à nota mais próxima do original.
+
+## Tamanho da interface
+
+A abertura padrão é **848 × 544**, 20% menor em cada dimensão que a prévia 0.2.0. Arraste a alça azul no canto inferior direito para aumentar ou diminuir proporcionalmente, entre 636 × 408 e 1590 × 1020. **Dois cliques no logo NF** restauram o tamanho padrão. O redimensionamento do conteúdo preserva a escala de tela definida pelo host.
+
+Os analisadores adicionais de afinação funcionam enquanto o editor está aberto e não modificam o sinal de áudio.
 
 A prioridade desta prévia é avaliar a qualidade em voz gravada. A latência é de **120 ms**, informada ao host para compensação, e pode incomodar durante monitoração ao vivo. A naturalidade ainda depende de teste auditivo com voz real. Não é um afinador polifônico nem um editor manual de notas.
 
@@ -38,11 +46,12 @@ Para evitar duas cópias da mesma prévia no host, retire o VST3 antigo NF Vocal
 
 ```sh
 cmake -S . -B build -DNF_BUILD_TESTS=ON -DJUCE_DIR=/caminho/para/JUCE
-cmake --build build --target VocalFineTests -j 6
+cmake --build build --target VocalFineTests VocalFineEditorChecks -j 6
 build/VocalFineTests_artefacts/Release/VocalFineTests "$(pwd)/build/NFVocalFine_artefacts/Release/VST3/NF Vocal Fine.vst3"
+build/VocalFineEditorChecks_artefacts/Release/VocalFineEditorChecks "$(pwd)/work/ui-checks"
 ```
 
-As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz, latência por impulso, estéreo, reset, vibrato, escalas, carregamento do VST3, parâmetros, persistência e abertura da interface. O host de teste é baseado em JUCE; isso não substitui o teste dentro da DAW do usuário.
+As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz, latência por impulso, estéreo, reset, vibrato, escalas, carregamento do VST3, parâmetros, persistência, abertura compacta no host, medições das curvas e ausência de mudanças no áudio ao ativar a monitoração. Os testes do editor exercitam a alça, os limites de tamanho, o duplo clique no logo, a escala de tela e o enquadramento dos controles. O host de teste é baseado em JUCE; isso não substitui o teste dentro da DAW do usuário.
 
 ## Organização
 
@@ -50,6 +59,7 @@ As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz
 - `Source/Plugin.cpp`: parâmetros, estado, wrapper e interface.
 - `Source/FineLook.h`: desenho dos controles.
 - `Source/Tests.cpp`: testes do motor e do VST3.
+- `Source/EditorChecks.cpp`: testes de interação e imagens de verificação do editor.
 - `Assets/Logo.png`: logo original fornecido pelo usuário, incorporado ao binário.
 - `ThirdParty/`: bibliotecas e termos de terceiros.
 

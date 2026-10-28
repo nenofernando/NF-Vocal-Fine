@@ -23,6 +23,10 @@ public:
         setColour(juce::TooltipWindow::outlineColourId,blue().withAlpha(0.3f));
     }
     juce::Label* createSliderTextBox(juce::Slider& s)override{auto* l=LookAndFeel_V4::createSliderTextBox(s);l->setFont(juce::FontOptions(22).withStyle("Bold"));l->setJustificationType(juce::Justification::centred);return l;}
+    void drawCornerResizer(juce::Graphics& g,int w,int h,bool hover,bool dragging)override{
+        g.setColour(blue().withAlpha(hover||dragging?1.0f:0.7f));
+        for(float d:{5.0f,9.0f,13.0f})g.drawLine(float(w)-d,float(h)-2,float(w)-2,float(h)-d,1.5f);
+    }
     void drawRotarySlider(juce::Graphics& g,int x,int y,int w,int h,float value,float begin,float end,juce::Slider&)override{
         auto r=juce::Rectangle<float>(float(x),float(y),float(w),float(h)).reduced(10);
         float radius=std::min(r.getWidth(),r.getHeight())*0.5f;auto c=r.getCentre();
