@@ -69,7 +69,7 @@ struct NaturalEngine {
             shift+=float(1-std::exp(-n/(rate*std::max(0.005f,s.speed*0.001f))))*(wanted-shift);correction=shift;
             float appliedShift=shift;
             if(manual){float manualShift=0;double sourceTime=blockStart+(offset+n*0.5-stretch.inputLatency())/rate;
-                if(manual->valueAt(sourceTime,manualShift))appliedShift+=(manualShift-appliedShift)*manual->weight;}
+                if(manual->valueAt(sourceTime,manualShift,detector.midi))appliedShift+=(manualShift-appliedShift)*manual->weight;}
             correction=appliedShift;
             stretch.setTransposeSemitones(appliedShift);stretch.setFormantSemitones(s.formant,true);
             std::array<const float*,2> in{};std::array<float*,2> out{};

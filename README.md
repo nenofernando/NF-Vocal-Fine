@@ -6,7 +6,7 @@ Plugin de afinação vocal da **NF Audio Tools**, em VST3, com interface escura 
 
 Imagem obtida com um sinal sintético de teste, mostrando as duas medições reais de afinação.
 
-A versão **0.3.0** acrescenta edição manual por posição na sessão: capture o mapa de afinação, selecione uma nota ou um intervalo e aplique **−1 / +1 semitom**, inclusive fora da escala. Mantém a interface compacta, redimensionamento, reset pelo logo, curvas medidas e Halo duplo.
+A versão **0.4.0** acrescenta **Mão / Pontos** e **Lápis** ao editor Manual. Crie pontos ligados por linhas ou desenhe a curva de afinação alvo. A edição é salva na sessão e aplicada ao áudio durante a reprodução, na posição do trecho escolhido.
 
 ## Ajustar uma nota específica
 
@@ -21,6 +21,26 @@ A versão **0.3.0** acrescenta edição manual por posição na sessão: capture
 O deslocamento manual é aplicado à voz original no intervalo escolhido, preservando suas pequenas variações; ele tem prioridade sobre a escala e a intensidade da correção automática nesse intervalo. Os demais trechos continuam usando os controles automáticos. Os cliques são cumulativos até ±12 semitons. Um ajuste manual de 0 st preserva a afinação original nesse intervalo; Remover restaura a afinação automática.
 
 **Verde no mapa manual é o destino previsto**, não uma medição de áudio já renderizado. Para comparar as medições reais, volte ao monitor e reproduza. O gráfico manual, os intervalos e seus deslocamentos ficam salvos no estado do plugin. O botão do cabeçalho informa quando há ajustes manuais, mesmo ao voltar ao monitor.
+
+### Mão / Pontos
+
+Depois de capturar a voz, escolha **Mão / Pontos** na lista de ferramentas. Clique no gráfico para criar um ponto e clique em outra posição para criar o segundo: a linha entre eles define a altura alvo ao longo do tempo. Uma linha precisa de **pelo menos dois pontos** para afetar o áudio.
+
+Arraste um ponto verticalmente para subir/descer a nota e horizontalmente para ajustar seu tempo. Os pontos não cruzam os vizinhos. Arraste a própria linha para mover juntos os dois pontos que a delimitam; um clique na linha acrescenta um novo ponto. **Semitons** encaixa nas notas cromáticas; desmarque ou segure **Shift** para ajuste contínuo. **Nova linha** começa uma passagem independente. **Excluir ponto** apaga o ponto selecionado; **Remover** apaga a linha ativa quando não há intervalo selecionado.
+
+![Edição por pontos, com sinal sintético de teste](Assets/Pontos.png)
+
+### Lápis
+
+Escolha **Lápis** e arraste sobre o gráfico para desenhar a afinação desejada. A curva é aplicada ao soltar o mouse. Por padrão, o lápis desenha livremente; Semitons permite encaixar nas notas. Um clique em **Desfazer** remove o gesto inteiro.
+
+![Curva livre de afinação, com sinal sintético de teste](Assets/Lapis.png)
+
+O eixo vertical representa **altura de nota**, não volume ou formato de onda do timbre. Verde é a curva alvo prevista e azul é a voz capturada. A altura entre pontos é interpolada continuamente. Uma linha reta reduz as variações de afinação; desenhe as ondulações que deseja manter. Reproduza e volte ao monitor para conferir as medições reais. Use Mix 100% ao avaliar a afinação desenhada.
+
+Curvas têm prioridade sobre os deslocamentos por intervalo, e a linha criada mais recentemente prevalece quando há sobreposição. **−1 / +1** e **Remover**, com um intervalo selecionado, substituem/recortam curvas somente nesse trecho, preservando as partes externas. O deslocamento de áudio é limitado a ±12 semitons em relação à voz detectada. O desenho não altera áudio quando não há pitch detectável.
+
+As curvas e os pontos permanecem editáveis após salvar e reabrir a sessão. Limites: 64 linhas e 4096 pontos de curva, além dos limites de captura e intervalos descritos abaixo.
 
 ### Posição na DAW
 
@@ -67,10 +87,11 @@ Para evitar duas cópias da mesma prévia no host, retire o VST3 antigo NF Vocal
 
 ```sh
 cmake -S . -B build -DNF_BUILD_TESTS=ON -DJUCE_DIR=/caminho/para/JUCE
-cmake --build build --target VocalFineTests VocalFineEditorChecks VocalFineManualChecks -j 6
+cmake --build build --target VocalFineTests VocalFineEditorChecks VocalFineManualChecks VocalFineCurveChecks -j 6
 build/VocalFineTests_artefacts/Release/VocalFineTests "$(pwd)/build/NFVocalFine_artefacts/Release/VST3/NF Vocal Fine.vst3"
 build/VocalFineEditorChecks_artefacts/Release/VocalFineEditorChecks "$(pwd)/work/ui-checks"
 build/VocalFineManualChecks_artefacts/Release/VocalFineManualChecks "$(pwd)/work/manual.png"
+build/VocalFineCurveChecks_artefacts/Release/VocalFineCurveChecks "$(pwd)/work/curve-checks"
 ```
 
 As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz, latência por impulso, estéreo, reset, vibrato, escalas, carregamento do VST3, parâmetros, persistência, abertura compacta no host, medições das curvas e ausência de mudanças no áudio ao ativar a monitoração. Os testes do editor exercitam a alça, os limites de tamanho, o duplo clique no logo, a escala de tela e o enquadramento dos controles. O host de teste é baseado em JUCE; isso não substitui o teste dentro da DAW do usuário.
@@ -84,6 +105,7 @@ As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz
 - `Source/EditorChecks.cpp`: testes de interação e imagens de verificação do editor.
 - `Source/ManualModel.h` e `Source/ManualPanel.h`: captura, intervalos, estado e editor manual.
 - `Source/ManualChecks.cpp`: seleção de trecho, deslocamento real de áudio, transporte e persistência.
+- `Source/CurveChecks.cpp`: pontos, desenho livre, interpolação, áudio, gestos e persistência das curvas.
 - `Assets/Logo.png`: logo original fornecido pelo usuário, incorporado ao binário.
 - `ThirdParty/`: bibliotecas e termos de terceiros.
 

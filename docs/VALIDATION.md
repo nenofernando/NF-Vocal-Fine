@@ -1,35 +1,34 @@
-# Validação da prévia 0.3.0
+# Validação da prévia 0.4.0
 
-Verificação local em 28/10/2026, macOS Intel (x86_64), JUCE 9.
+Teste local em 28/10/2026, macOS Intel, JUCE 9.
 
-86 verificações passaram: 49 de áudio/host VST3, 14 de interface e 23 do modo manual. O estado manual também foi inserido e recuperado através do estado de um VST3 realmente carregado pelo host de teste.
+115 verificações passaram: 50 de áudio/host VST3, 14 de interface, 23 de edição por trecho e 28 de pontos/curvas/lápis. Os sinais e imagens de teste são sintéticos; nenhuma gravação do usuário é publicada no repositório.
 
-## Modo manual
+## Pontos, linhas e lápis
 
-23 verificações específicas passaram, cobrindo:
+28 verificações específicas cobrem:
 
-- Criar intervalo, substituir somente a parte sobreposta, remover e desfazer.
-- Salvar/reabrir intervalos, deslocamentos e mapa de afinação.
-- Áudio de C4 deslocado para B3 e C#4 apenas no intervalo selecionado, em 44,1 e 48 kHz.
-- C#4 permitido manualmente mesmo com Dó maior na correção automática.
-- Mesma nota antes e depois do intervalo preservada.
-- Captura de afinação ligada ao tempo da sessão fornecido por transporte de teste.
-- Abrir modo manual pelo cabeçalho, arrastar intervalo e clicar +1 semitom.
-- Voltar à posição salva reaplica a edição; sair dela restaura a correção automática.
-- Com transporte parado, os ajustes manuais não se aplicam à entrada ao vivo.
-- Estado antigo sem dados manuais não cria edições.
+- Criação de pontos ligados e interpolação linear da altura entre eles.
+- Um ponto isolado não produz alteração; a linha precisa de pelo menos dois.
+- Mover um ponto altera o alvo interpolado; seleção sem mudança não cria etapa inútil de desfazer.
+- Arrastar a linha move os dois pontos que a delimitam.
+- Curva livre, exclusão, recorte de uma seleção, preservação das partes externas e desfazer do gesto inteiro.
+- Rejeição de pontos inválidos/duplicados e persistência dos nós editáveis.
+- Áudio real C4 -> C#4 somente dentro do intervalo desenhado, fora de Dó maior, em 44,1/48 kHz.
+- Áudio acompanha uma linha ascendente de altura entre pontos.
+- Gestos reais de mouse da mão e do lápis na área Manual ampliada.
+- Estado do processador recupera as curvas após salvar/reabrir.
 
-Os testes usam sinais sintéticos e transporte JUCE de teste. Não substituem a avaliação dentro da DAW do usuário com voz real. A indicação verde no mapa manual é uma previsão do deslocamento, não análise de áudio renderizado.
+## Compatibilidade das funções anteriores
 
-## Interface e áudio existentes
+São mantidos os testes de edição por trecho, posição da sessão, escala automática, curvas medidas, latência, estéreo, estado e redimensionamento. A verificação do host VST3 inclui o carregamento do arquivo gerado e a recuperação dos pontos de uma curva através do estado real do VST3.
 
-A verificação de interface cobre 14 casos de abertura compacta, redimensionamento, limites, duplo clique no logo, escala do host e monitores de pitch. A suíte de áudio/host cobre 49 verificações de afinação, latência, estéreo, vibrato, curvas, estado e carregamento VST3.
+Abertura 848 × 544; limites 636 × 408 a 1590 × 1020; duplo clique no logo restaura o tamanho. O modo Manual amplia a área de desenho dentro da janela, sem alterar o modo Monitor. Latência de áudio: 120 ms.
 
-Abertura padrão: 848 × 544. Limites: 636 × 408 a 1590 × 1020.
-Latência do processamento: 120 ms. Identificadores VST3 e dos parâmetros preservados.
+## Limites de interpretação
 
-## Limites práticos
+Verde no editor é altura alvo prevista, não áudio já renderizado. O monitor compara as medições reais. Curvas são ligadas à posição na sessão, exigem tempo/transporte válidos do host e não seguem automaticamente clipes movidos. A diferença de altura aplicada é limitada a ±12 semitons da voz detectada; sem pitch detectável, a curva não inventa uma nota.
 
-As edições dependem da posição de reprodução do host e são ligadas ao tempo da sessão. Mover clipes requer revisar os intervalos. A captura guarda metadados, sem copiar áudio. Limites: 36 mil pontos, 128 intervalos e 64 alterações no histórico de desfazer. O ajuste manual transpõe a voz original no intervalo; não quantiza rigidamente o vibrato nem segue a identidade dos clipes. Avalie especialmente notas curtas e as bordas da seleção.
+Há até 64 linhas e 4096 pontos de curva, além de 128 intervalos e 36 mil pontos do mapa capturado. Desfazer guarda 64 alterações. Notas muito curtas, curvas rápidas e limites de sílabas exigem avaliação auditiva. A validação automatizada não certifica todas as DAWs nem naturalidade para todos os cantores.
 
-Sem instalação global, sem publicação de gravações do usuário e sem integração nativa na Mixa Studio nesta etapa.
+Sem instalação global e sem integração nativa na Mixa Studio nesta etapa.

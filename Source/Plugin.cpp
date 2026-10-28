@@ -74,7 +74,7 @@ public:
         setLookAndFeel(&look);
         addAndMakeVisible(manualPanel);manualPanel.setVisible(false);
         addAndMakeVisible(manualButton);manualButton.setClickingTogglesState(true);
-        manualButton.onClick=[this]{bool show=manualButton.getToggleState();manualPanel.setVisible(show);manualButton.setButtonText(show?"Voltar ao monitor":"Manual por trecho");if(!show&&p.manual.capturing.exchange(false)){p.manual.drain();if(p.manual.onEdit)p.manual.onEdit();}};
+        manualButton.onClick=[this]{bool show=manualButton.getToggleState();manualPanel.setVisible(show);if(show)manualPanel.toFront(false);manualButton.setButtonText(show?"Voltar ao monitor":"Manual por trecho");if(!show&&p.manual.capturing.exchange(false)){p.manual.drain();if(p.manual.onEdit)p.manual.onEdit();}};
 #if NF_PREVIEW
         logo=juce::ImageFileFormat::loadFrom(juce::File::getCurrentWorkingDirectory().getChildFile("Assets/Logo.png"));
 #else
@@ -98,7 +98,7 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& e)override{if(juce::Rectangle<int>(28,13,135,77).contains(e.getPosition())&&onLogoDoubleClick)onLogoDoubleClick();}
     void mouseMove(const juce::MouseEvent& e)override{setMouseCursor(juce::Rectangle<int>(28,13,135,77).contains(e.getPosition())?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor);}
     void timerCallback()override{
-        if(!manualButton.getToggleState()){int count=int(p.manual.getEdits().size());manualButton.setButtonText(count?"Manual: "+juce::String(count)+" ajuste(s)":"Manual por trecho");}
+        if(!manualButton.getToggleState()){int count=int(p.manual.editCount());manualButton.setButtonText(count?"Manual: "+juce::String(count)+" ajuste(s)":"Manual por trecho");}
         float original=p.engine.originalMeasured.load(),corrected=p.engine.outputMeasured.load();
         float missing=std::numeric_limits<float>::quiet_NaN();
         float reference=original>=0?std::round(original):corrected>=0?std::round(corrected):0;
@@ -112,7 +112,7 @@ public:
         head=(head+1)%history.size();repaint(24,110,1012,224);
     }
     void resized()override{
-        manualPanel.setBounds(24,119,1012,213);manualButton.setBounds(690,68,160,24);
+        manualPanel.setBounds(24,119,1012,317);manualButton.setBounds(690,68,160,24);
         key.setBounds(195,373,86,35);scale.setBounds(293,373,190,35);
         for(int i=0;i<12;++i)notes[i].setBounds(506+i*42,369,36,45);
         for(int i=0;i<5;++i)knobs[i].setBounds(45+i*204,477,154,140);
@@ -124,7 +124,7 @@ public:
         text(g,"NF Vocal Fine",{260,26,540,40},30,fine::ink(),true,juce::Justification::centred);
         text(g,juce::String::fromUTF8("AFINAÇÃO VOCAL  /  EXPRESSÃO NATURAL"),{260,65,540,18},10.5f,fine::muted(),false,juce::Justification::centred);
         g.setColour(juce::Colour(0xff162d46));g.fillRoundedRectangle(877,34,159,29,14);g.setColour(fine::blue());g.fillEllipse(890,45,6,6);
-        text(g,juce::String::fromUTF8("PRÉVIA  0.3.0"),{905,35,120,26},11,fine::blue(),true);
+        text(g,juce::String::fromUTF8("PRÉVIA  0.4.0"),{905,35,120,26},11,fine::blue(),true);
         g.setColour(juce::Colour(0xff243247));g.drawHorizontalLine(100,24,1036);
         card(g,{24,119,1012,213});
         g.setColour(juce::Colour(0xff2c3c52));g.drawVerticalLine(220,146,306);g.drawVerticalLine(822,146,306);

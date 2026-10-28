@@ -1,0 +1,41 @@
+#include "Plugin.cpp"
+#include <iostream>
+static juce::MouseEvent curveEvent(juce::Component& c,juce::Point<float> p,juce::Point<float> down,bool dragged=false){return {juce::Desktop::getInstance().getMainMouseSource(),p,juce::ModifierKeys(juce::ModifierKeys::leftButtonModifier),1,0,0,0,0,&c,&c,juce::Time::getCurrentTime(),down,juce::Time::getCurrentTime(),1,dragged};}
+int main(int argc,char** argv){
+ juce::ScopedJuceInitialiser_GUI gui;int failures=0;auto check=[&](bool ok,const char* s){std::cout<<(ok?"PASS ":"FAIL ")<<s<<"\n";if(!ok)++failures;};
+ ManualDocument doc;int id=doc.setCurve(0,{{1,60},{2,62}});check(id>0,"create connected pitch anchors");doc.setCurve(id,{{1,60},{2,62}});doc.undo();check(doc.getCurves().empty(),"selecting an unchanged anchor does not add an undo step");id=doc.setCurve(0,{{1,60},{2,62}});ManualSnapshot snapshot;doc.readForAudio(snapshot);float shift=0;check(snapshot.valueAt(1.5,shift,60)&&std::abs(shift-1)<0.001,"linear interpolation of pitch between anchors");check(!snapshot.valueAt(0.5,shift,60)&&!snapshot.valueAt(2.5,shift,60),"curve affects only its time span");
+ doc.setCurve(id,{{1,60},{2,64}});doc.readForAudio(snapshot);snapshot.valueAt(1.5,shift,60);check(std::abs(shift-2)<0.001,"moving anchor changes interpolated target");doc.undo();doc.readForAudio(snapshot);snapshot.valueAt(1.5,shift,60);check(std::abs(shift-1)<0.001,"undo restores complete previous curve");
+ ManualDocument recall;recall.restore(doc.save());auto curves=recall.getCurves();check(curves.size()==1&&curves[0].nodes.size()==2&&curves[0].nodes.back().midi==62,"curve anchors persist in session state");
+ recall.setRange(1.3,1.7,0,true);recall.readForAudio(snapshot);bool left=snapshot.valueAt(1.15,shift,60)&&std::abs(shift-0.3f)<0.01;bool middle=!snapshot.valueAt(1.5,shift,60);bool right=snapshot.valueAt(1.85,shift,60)&&std::abs(shift-1.7f)<0.01;check(left&&middle&&right,"removing a selection preserves curve on both sides");recall.undo();check(recall.getCurves().size()==1,"undo restores a curve split by removal");
+ std::vector<CurvePoint> stroke;for(int i=0;i<=100;++i){double t=3+i*0.01;stroke.push_back({t,60+float(std::sin(2*juce::MathConstants<double>::pi*(t-3)))});}int wave=doc.setCurve(0,stroke);doc.readForAudio(snapshot);snapshot.valueAt(3.25,shift,60);check(wave>0&&std::abs(shift-1)<0.01,"freehand pitch curve reaches its drawn target");doc.undo();check(doc.getCurves().size()==1,"one undo removes the complete pencil gesture");
+ check(!doc.setCurve(0,{{1,60},{1,61}})&&!doc.setCurve(0,{{1,std::numeric_limits<float>::quiet_NaN()}}),"reject invalid and duplicate curve points");
+ int single=doc.setCurve(0,{{5,70}});doc.readForAudio(snapshot);check(single>0&&!snapshot.valueAt(5,shift,60),"one isolated anchor does not alter audio");doc.eraseCurve(single);check(doc.getCurves().size()==1,"delete an isolated anchor line");
+ for(double sr:{44100.,48000.}){
+  NaturalEngine engine;engine.prepare(sr,1);ManualSnapshot target;target.curveCount=1;target.curves[0]={0,2};target.nodeCount=2;target.nodes[0]={1,61};target.nodes[1]={2,61};TuneSettings settings;settings.scale=1;settings.human=0;settings.amount=1;
+  int n=int(sr*3.2),block=257;juce::AudioBuffer<float> result(1,n+engine.latency+512);result.clear();
+  for(int offset=0;offset<n+engine.latency;offset+=block){juce::AudioBuffer<float>b(1,block);for(int i=0;i<block;++i)b.setSample(0,i,float(0.2*std::sin(2*juce::MathConstants<double>::pi*261.625565*(offset+i)/sr)));engine.process(b,settings,&target,offset/sr);result.copyFrom(0,offset,b,0,0,block);}
+  auto pitch=[&](double start){VoiceDetector d;d.prepare(sr);for(int i=int(start*sr)+engine.latency;i<int((start+0.35)*sr)+engine.latency;++i)d.push(result.getSample(0,i));d.analyse();return d.midi;};
+  float before=pitch(0.35),inside=pitch(1.3),after=pitch(2.4);std::cout<<"curve audio "<<sr<<" "<<before<<" / "<<inside<<" / "<<after<<"\n";check(std::abs(inside-61)<0.08,"drawn C sharp target corrects actual audio outside C major");check(std::abs(before-60)<0.08&&std::abs(after-60)<0.08,"drawn correction preserves other occurrences of the note");
+  engine.reset();target.nodes[0]={1,60};target.nodes[1]={2,62};result.clear();
+  for(int offset=0;offset<n+engine.latency;offset+=block){juce::AudioBuffer<float>b(1,block);for(int i=0;i<block;++i)b.setSample(0,i,float(0.2*std::sin(2*juce::MathConstants<double>::pi*261.625565*(offset+i)/sr)));engine.process(b,settings,&target,offset/sr);result.copyFrom(0,offset,b,0,0,block);}
+  float early=pitch(1.05),late=pitch(1.45);std::cout<<"rising curve "<<early<<" to "<<late<<"\n";check(late>early+0.5f&&late<early+1.3f,"actual audio follows a rising line between anchors");
+ }
+ FineProcessor processor;processor.prepareToPlay(48000,256);processor.manual.capturing=true;for(int i=0;i<=90;++i)processor.manual.push({i/30.,60});processor.manual.capturing=false;processor.manual.drain();
+ std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());editor->setVisible(true);ManualPanel* panel=nullptr;
+ for(auto* c:editor->getChildren())if(auto* f=dynamic_cast<FinePanel*>(c))for(auto* child:f->getChildren()){if(auto* m=dynamic_cast<ManualPanel*>(child))panel=m;if(auto* b=dynamic_cast<juce::TextButton*>(child))if(b->getButtonText()=="Manual por trecho"){b->setToggleState(true,juce::dontSendNotification);b->onClick();}}
+ check(panel&&panel->isVisible()&&panel->getHeight()==317,"expanded manual drawing workspace");
+ if(panel){juce::ComboBox* tool=nullptr;for(auto* c:panel->getChildren())if(auto* box=dynamic_cast<juce::ComboBox*>(c))tool=box;
+  check(tool&&tool->getNumItems()==3,"select, hand and pencil tools are available");
+  if(tool){tool->setSelectedId(2,juce::dontSendNotification);tool->onChange();double start=0,end=3.25;auto x=[&](double t){return 48+float((t-start)/(end-start))*(panel->getWidth()-65);};float mid=80+(panel->getHeight()-125)*0.5f;
+   auto click=[&](juce::Point<float> p){panel->mouseDown(curveEvent(*panel,p,p));panel->mouseUp(curveEvent(*panel,p,p));};
+   click({x(0.8),mid});click({x(1.8),mid-24});auto drawn=processor.manual.getCurves();check(drawn.size()==1&&drawn[0].nodes.size()==2,"hand clicks create two linked anchors");
+   juce::Point<float> a{x(0.8),mid+12},b{x(0.8),mid-28};panel->mouseDown(curveEvent(*panel,a,a));panel->mouseDrag(curveEvent(*panel,b,a,true));panel->mouseUp(curveEvent(*panel,b,a,true));drawn=processor.manual.getCurves();check(drawn.size()==1&&drawn[0].nodes[0].midi>60,"drag a hand anchor upward");
+   float leftBefore=drawn[0].nodes[0].midi,rightBefore=drawn[0].nodes[1].midi;
+   a={x(1.3),164};b={x(1.3),140};panel->mouseDown(curveEvent(*panel,a,a));panel->mouseDrag(curveEvent(*panel,b,a,true));panel->mouseUp(curveEvent(*panel,b,a,true));drawn=processor.manual.getCurves();check(drawn[0].nodes[0].midi==leftBefore+1&&drawn[0].nodes[1].midi==rightBefore+1,"drag the line to raise both bounding anchors together");
+   auto shot=[&](const char* name){if(argc<2)return;auto file=juce::File(argv[1]).getChildFile(name);file.getParentDirectory().createDirectory();file.deleteFile();juce::FileOutputStream out(file);juce::PNGImageFormat().writeImageToStream(editor->createComponentSnapshot(editor->getLocalBounds(),true,1),out);};shot("Pontos.png");
+   tool->setSelectedId(3,juce::dontSendNotification);tool->onChange();a={x(1.9),mid};panel->mouseDown(curveEvent(*panel,a,a));for(int i=1;i<=40;++i){juce::Point<float> p{x(1.9+i*0.025),mid-20*float(std::sin(i*0.18))};panel->mouseDrag(curveEvent(*panel,p,a,true));}panel->mouseUp(curveEvent(*panel,{x(2.9),mid},a,true));drawn=processor.manual.getCurves();check(drawn.size()==2&&drawn.back().nodes.size()>20,"pencil gesture creates a freehand pitch curve");shot("Lapis.png");
+   processor.manual.undo();check(processor.manual.getCurves().size()==1,"single undo removes a whole drawn stroke");
+  }
+ }
+ processor.manual.setCurve(0,{{2.5,60},{3,62}});juce::MemoryBlock state;processor.getStateInformation(state);FineProcessor restored;restored.setStateInformation(state.getData(),int(state.getSize()));check(restored.manual.getCurves().size()==processor.manual.getCurves().size(),"processor state restores editable pitch curves");editor.reset();return failures?1:0;
+}
