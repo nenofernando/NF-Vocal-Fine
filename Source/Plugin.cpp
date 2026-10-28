@@ -46,6 +46,7 @@ class FinePanel final : public juce::Component,private juce::Timer {
     std::array<juce::TextButton,12> notes;
     std::array<float,180> history{},correctedHistory{};
     size_t head=0;
+    float neonOriginal=0,neonCorrected=0,originalGlow=0,correctedGlow=0;
     using SA=juce::AudioProcessorValueTreeState::SliderAttachment;
     using CA=juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using BA=juce::AudioProcessorValueTreeState::ButtonAttachment;
@@ -85,6 +86,11 @@ public:
         float reference=original>=0?std::round(original):corrected>=0?std::round(corrected):0;
         history[head]=original>=0?(original-reference)*100:missing;
         correctedHistory[head]=corrected>=0?(corrected-reference)*100:missing;
+        // Visual smoothing only: audio and measured pitch are untouched.
+        if(original>=0)neonOriginal+=0.28f*(juce::jlimit(-50.0f,50.0f,(original-reference)*100)-neonOriginal);
+        if(corrected>=0)neonCorrected+=0.28f*(juce::jlimit(-50.0f,50.0f,(corrected-reference)*100)-neonCorrected);
+        originalGlow+=0.22f*((original>=0?1.0f:0.0f)-originalGlow);
+        correctedGlow+=0.22f*((corrected>=0?1.0f:0.0f)-correctedGlow);
         head=(head+1)%history.size();repaint(24,110,1012,224);
     }
     void resized()override{
@@ -99,7 +105,7 @@ public:
         text(g,"NF Vocal Fine",{260,26,540,40},30,fine::ink(),true,juce::Justification::centred);
         text(g,juce::String::fromUTF8("AFINAÇÃO VOCAL  /  EXPRESSÃO NATURAL"),{260,65,540,18},10.5f,fine::muted(),false,juce::Justification::centred);
         g.setColour(juce::Colour(0xff162d46));g.fillRoundedRectangle(877,34,159,29,14);g.setColour(fine::blue());g.fillEllipse(890,45,6,6);
-        text(g,juce::String::fromUTF8("PRÉVIA  0.2.1"),{905,35,120,26},11,fine::blue(),true);
+        text(g,juce::String::fromUTF8("PRÉVIA  0.2.2"),{905,35,120,26},11,fine::blue(),true);
         g.setColour(juce::Colour(0xff243247));g.drawHorizontalLine(100,24,1036);
         card(g,{24,119,1012,213});
         g.setColour(juce::Colour(0xff2c3c52));g.drawVerticalLine(220,146,306);g.drawVerticalLine(822,146,306);
@@ -130,12 +136,23 @@ public:
         auto bar=juce::Rectangle<float>(252,278,538,10);
         g.setColour(juce::Colour(0xff26364b));g.fillRoundedRectangle(bar,4);
         g.setColour(green.withAlpha(0.15f));g.fillRoundedRectangle(bar.getCentreX()-bar.getWidth()*0.05f,bar.getY(),bar.getWidth()*0.1f,bar.getHeight(),2);
-        for(int i=0;i<=4;++i){float x=bar.getX()+bar.getWidth()*i/4;g.setColour(i==2?green.withAlpha(0.8f):fine::muted().withAlpha(0.45f));g.drawVerticalLine(int(x),275,291);}
-        float reference=m>=0?std::round(m):corrected>=0?std::round(corrected):0;
-        auto marker=[&](float note,juce::Colour colour,bool top){if(note<0)return;float cents=(note-reference)*100;float x=bar.getCentreX()+juce::jlimit(-50.0f,50.0f,cents)*bar.getWidth()/100;
-            g.setColour(colour);g.drawVerticalLine(int(x),274,292);juce::Path triangle;float y=top?270.0f:296.0f;triangle.addTriangle(x-3,y,x+3,y,x,top?y+4:y-4);g.fillPath(triangle);
+        g.setColour(green.withAlpha(0.32f));g.fillRect(bar.getCentreX()-0.5f,274.0f,1.0f,18.0f);
+        auto neon=[&](float cents,juce::Colour colour,float intensity){
+            if(intensity<0.01f)return;
+            const float x=bar.getCentreX()+cents*bar.getWidth()/100,y=bar.getCentreY();
+            juce::Graphics::ScopedSaveState clip(g);g.reduceClipRegion(245,263,552,35);
+            {
+                juce::Graphics::ScopedSaveState halo(g);
+                g.addTransform(juce::AffineTransform::scale(1.0f,0.27f).translated(0,y*0.73f));
+                juce::ColourGradient glow(colour.withAlpha(intensity*0.55f),x,y,colour.withAlpha(0.0f),x+48,y,true);
+                glow.addColour(0.35,colour.withAlpha(intensity*0.28f));glow.addColour(0.7,colour.withAlpha(intensity*0.07f));
+                g.setGradientFill(glow);g.fillEllipse(x-48,y-48,96,96);
+            }
+            g.setColour(colour.withAlpha(intensity*0.16f));g.fillRoundedRectangle(x-28,y-5,56,10,5);
+            g.setColour(colour.withAlpha(intensity*0.95f));g.fillRoundedRectangle(x-20,y-2.5f,40,5,2.5f);
+            g.setColour(juce::Colour(0xffe9fff7).withAlpha(intensity*0.85f));g.fillRoundedRectangle(x-8,y-0.65f,16,1.3f,0.65f);
         };
-        marker(m,fine::blue(),true);marker(corrected,green,false);
+        neon(neonOriginal,fine::blue(),originalGlow);neon(neonCorrected,green,correctedGlow);
         text(g,"-50",{249,299,50,15},9,fine::muted());text(g,"-25",{365,299,50,15},9,fine::muted(),false,juce::Justification::centred);
         text(g,"0",{496,299,50,15},9,green,true,juce::Justification::centred);text(g,"+25",{631,299,50,15},9,fine::muted(),false,juce::Justification::centred);text(g,"+50 cents",{728,299,65,15},9,fine::muted(),false,juce::Justification::centredRight);
         text(g,juce::String::fromUTF8("CORREÇÃO MEDIDA"),{846,142,175,20},10.5f,fine::muted(),true);

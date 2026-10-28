@@ -1,4 +1,4 @@
-# Validação da prévia 0.2.1
+# Validação da prévia 0.2.2
 
 Verificação local em 28/10/2026, macOS Intel (x86_64), JUCE 9.
 
@@ -14,6 +14,8 @@ Verificação local em 28/10/2026, macOS Intel (x86_64), JUCE 9.
 - Transformação do conteúdo preserva a escala de tela do host.
 - Layout e enquadramento conferidos nos tamanhos mínimo, padrão e máximo.
 - Duas curvas e régua de -50 a +50 cents: original azul, saída corrigida verde.
+- Visual Halo duplo aprovado: luzes neon em uma única régua, sem traços ou triângulos móveis. O zero permanece fixo.
+- Suavização e desaparecimento gradual aplicados somente à animação visual; as medições e o áudio permanecem intactos.
 - A imagem da documentação usa um sinal sintético; nenhuma voz do usuário é publicada.
 
 ## Áudio e medições

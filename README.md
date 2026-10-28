@@ -6,13 +6,13 @@ Plugin de afinação vocal da **NF Audio Tools**, em VST3, com interface escura 
 
 Imagem obtida com um sinal sintético de teste, mostrando as duas medições reais de afinação.
 
-A versão **0.2.1** traz interface compacta e redimensionável, título centralizado, dois monitores de afinação e régua em cents. O processamento de afinação mantém os mesmos controles: correção por tom e escala, seleção de notas, intensidade, tempo de transição, preservação de vibrato, compensação de formantes e mistura com a voz original.
+A versão **0.2.2** aplica o visual aprovado Halo duplo à régua: duas luzes neon na mesma faixa, azul para o original e verde para a voz corrigida, com deslocamento suave e desaparecimento gradual sem sinal. Mantém a interface compacta, título centralizado e os dois monitores de afinação. O processamento de afinação mantém os mesmos controles: correção por tom e escala, seleção de notas, intensidade, tempo de transição, preservação de vibrato, compensação de formantes e mistura com a voz original.
 
 ## Primeiro teste
 
 Use uma voz solo gravada, sem acompanhamento ou efeitos no mesmo arquivo. Escolha o tom e a escala da música. A configuração inicial é Correção 80%, Transição 110 ms, Naturalidade 70%, Formantes 0 st e Mix 100%.
 
-O monitor compara duas medições reais de afinação: **azul = voz original** e **verde = saída corrigida**, incluindo a posição do controle Mix. O original é atrasado internamente pela latência do processamento para as duas curvas representarem o mesmo instante do áudio. O valor à direita mostra a diferença medida entre as duas vozes quando há nota detectada. A régua horizontal, de -50 a +50 cents, usa as mesmas cores e marca o zero no centro; o histórico acima mostra até ±100 cents em relação à nota mais próxima do original.
+O monitor compara duas medições reais de afinação: **azul = voz original** e **verde = saída corrigida**, incluindo a posição do controle Mix. O original é atrasado internamente pela latência do processamento para as duas curvas representarem o mesmo instante do áudio. O valor à direita mostra a diferença medida entre as duas vozes quando há nota detectada. A régua horizontal, de -50 a +50 cents, usa luzes neon nas mesmas cores e marca o zero no centro; o histórico acima mostra até ±100 cents em relação à nota mais próxima do original.
 
 ## Tamanho da interface
 
