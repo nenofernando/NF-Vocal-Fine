@@ -98,6 +98,7 @@ public:
     void mouseDoubleClick(const juce::MouseEvent& e)override{if(juce::Rectangle<int>(28,13,135,77).contains(e.getPosition())&&onLogoDoubleClick)onLogoDoubleClick();}
     void mouseMove(const juce::MouseEvent& e)override{setMouseCursor(juce::Rectangle<int>(28,13,135,77).contains(e.getPosition())?juce::MouseCursor::PointingHandCursor:juce::MouseCursor::NormalCursor);}
     void timerCallback()override{
+        manualPanel.automaticAmount=p.value(2)/100;manualPanel.automaticHuman=p.value(4)/100;manualPanel.automaticSpeed=p.value(3);
         if(!manualButton.getToggleState()){int count=int(p.manual.editCount());manualButton.setButtonText(count?"Manual: "+juce::String(count)+" ajuste(s)":"Manual por trecho");}
         float original=p.engine.originalMeasured.load(),corrected=p.engine.outputMeasured.load();
         float missing=std::numeric_limits<float>::quiet_NaN();
@@ -124,7 +125,7 @@ public:
         text(g,"NF Vocal Fine",{260,26,540,40},30,fine::ink(),true,juce::Justification::centred);
         text(g,juce::String::fromUTF8("AFINAÇÃO VOCAL  /  EXPRESSÃO NATURAL"),{260,65,540,18},10.5f,fine::muted(),false,juce::Justification::centred);
         g.setColour(juce::Colour(0xff162d46));g.fillRoundedRectangle(877,34,159,29,14);g.setColour(fine::blue());g.fillEllipse(890,45,6,6);
-        text(g,juce::String::fromUTF8("PRÉVIA  0.4.0"),{905,35,120,26},11,fine::blue(),true);
+        text(g,juce::String::fromUTF8("PRÉVIA  0.5.0"),{905,35,120,26},11,fine::blue(),true);
         g.setColour(juce::Colour(0xff243247));g.drawHorizontalLine(100,24,1036);
         card(g,{24,119,1012,213});
         g.setColour(juce::Colour(0xff2c3c52));g.drawVerticalLine(220,146,306);g.drawVerticalLine(822,146,306);

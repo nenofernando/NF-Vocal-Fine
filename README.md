@@ -6,7 +6,7 @@ Plugin de afinação vocal da **NF Audio Tools**, em VST3, com interface escura 
 
 Imagem obtida com um sinal sintético de teste, mostrando as duas medições reais de afinação.
 
-A versão **0.4.0** acrescenta **Mão / Pontos** e **Lápis** ao editor Manual. Crie pontos ligados por linhas ou desenhe a curva de afinação alvo. A edição é salva na sessão e aplicada ao áudio durante a reprodução, na posição do trecho escolhido.
+A versão **0.5.0** acrescenta o botão **AUTOMATIC**, com sugestão de tom/escala e correção da voz selecionada, além de **duplo clique para excluir pontos** na ferramenta Mão / Pontos.
 
 ## Ajustar uma nota específica
 
@@ -26,7 +26,7 @@ O deslocamento manual é aplicado à voz original no intervalo escolhido, preser
 
 Depois de capturar a voz, escolha **Mão / Pontos** na lista de ferramentas. Clique no gráfico para criar um ponto e clique em outra posição para criar o segundo: a linha entre eles define a altura alvo ao longo do tempo. Uma linha precisa de **pelo menos dois pontos** para afetar o áudio.
 
-Arraste um ponto verticalmente para subir/descer a nota e horizontalmente para ajustar seu tempo. Os pontos não cruzam os vizinhos. Arraste a própria linha para mover juntos os dois pontos que a delimitam; um clique na linha acrescenta um novo ponto. **Semitons** encaixa nas notas cromáticas; desmarque ou segure **Shift** para ajuste contínuo. **Nova linha** começa uma passagem independente. **Excluir ponto** apaga o ponto selecionado; **Remover** apaga a linha ativa quando não há intervalo selecionado.
+Arraste um ponto verticalmente para subir/descer a nota e horizontalmente para ajustar seu tempo. Os pontos não cruzam os vizinhos. Arraste a própria linha para mover juntos os dois pontos que a delimitam; um clique na linha acrescenta um novo ponto. **Semitons** encaixa nas notas cromáticas; desmarque ou segure **Shift** para ajuste contínuo. **Nova linha** começa uma passagem independente. **Dois cliques num ponto** o excluem e ligam os pontos restantes; Desfazer restaura a exclusão. A última âncora removida elimina sua linha vazia. O botão **Excluir ponto** continua disponível; **Remover** apaga a linha ativa quando não há intervalo selecionado.
 
 ![Edição por pontos, com sinal sintético de teste](Assets/Pontos.png)
 
@@ -41,6 +41,23 @@ O eixo vertical representa **altura de nota**, não volume ou formato de onda do
 Curvas têm prioridade sobre os deslocamentos por intervalo, e a linha criada mais recentemente prevalece quando há sobreposição. **−1 / +1** e **Remover**, com um intervalo selecionado, substituem/recortam curvas somente nesse trecho, preservando as partes externas. O deslocamento de áudio é limitado a ±12 semitons em relação à voz detectada. O desenho não altera áudio quando não há pitch detectável.
 
 As curvas e os pontos permanecem editáveis após salvar e reabrir a sessão. Limites: 64 linhas e 4096 pontos de curva, além dos limites de captura e intervalos descritos abaixo.
+
+### AUTOMATIC
+
+1. Capture a voz solo pela DAW.
+2. Use **Selecionar tudo** para a voz capturada inteira, ou arraste um intervalo com Selecionar.
+3. Deixe a lista em **Auto: detectar** ou escolha um tom maior/menor conhecido.
+4. Clique **AUTOMATIC** e reproduza para ouvir. **Desfazer** reverte a aplicação inteira em uma etapa.
+
+O botão estima uma escala **maior ou menor natural** a partir das notas e durações do mapa capturado inteiro, para aproveitar contexto além da seleção. A correção é aplicada **somente à seleção** e não altera os controles globais de tom/escala. Os ajustes fora dela são preservados.
+
+A sugestão aparece ao lado do botão, com **?** quando é ambígua. Ela é uma hipótese musical: uma voz isolada pode caber em mais de um tom, e modulações/trechos cromáticos exigem atenção. Quando faltam notas ou não há suporte suficiente a uma escala maior/menor, o modo Auto pede mais captura ou uma escolha manual. Você pode sempre escolher uma das 24 opções maior/menor antes de aplicar.
+
+**Correção, Naturalidade e Transição** são usadas no momento da aplicação para manter uma afinação mais suave. Para mudar a intensidade depois, ajuste esses controles e aplique AUTOMATIC novamente. Mix e Formantes continuam funcionando durante a reprodução. As curvas geradas permanecem editáveis com Mão / Pontos e Lápis.
+
+As curvas e a última sugestão ficam salvas na sessão. Os limites de linhas/pontos continuam valendo: se a seleção exceder a capacidade, nada é aplicado parcialmente; selecione uma passagem menor. O botão exige seleção explícita para evitar alterar a voz inteira por engano.
+
+![AUTOMATIC na seleção, com voz sintética de teste](Assets/Automatic.png)
 
 ### Posição na DAW
 
@@ -87,11 +104,12 @@ Para evitar duas cópias da mesma prévia no host, retire o VST3 antigo NF Vocal
 
 ```sh
 cmake -S . -B build -DNF_BUILD_TESTS=ON -DJUCE_DIR=/caminho/para/JUCE
-cmake --build build --target VocalFineTests VocalFineEditorChecks VocalFineManualChecks VocalFineCurveChecks -j 6
+cmake --build build --target VocalFineTests VocalFineEditorChecks VocalFineManualChecks VocalFineCurveChecks VocalFineAutomaticChecks -j 6
 build/VocalFineTests_artefacts/Release/VocalFineTests "$(pwd)/build/NFVocalFine_artefacts/Release/VST3/NF Vocal Fine.vst3"
 build/VocalFineEditorChecks_artefacts/Release/VocalFineEditorChecks "$(pwd)/work/ui-checks"
 build/VocalFineManualChecks_artefacts/Release/VocalFineManualChecks "$(pwd)/work/manual.png"
 build/VocalFineCurveChecks_artefacts/Release/VocalFineCurveChecks "$(pwd)/work/curve-checks"
+build/VocalFineAutomaticChecks_artefacts/Release/VocalFineAutomaticChecks "$(pwd)/work/automatic.png"
 ```
 
 As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz, latência por impulso, estéreo, reset, vibrato, escalas, carregamento do VST3, parâmetros, persistência, abertura compacta no host, medições das curvas e ausência de mudanças no áudio ao ativar a monitoração. Os testes do editor exercitam a alça, os limites de tamanho, o duplo clique no logo, a escala de tela e o enquadramento dos controles. O host de teste é baseado em JUCE; isso não substitui o teste dentro da DAW do usuário.
@@ -105,7 +123,8 @@ As verificações cobrem detecção de notas, áudio corrigido em 44,1/48/96 kHz
 - `Source/EditorChecks.cpp`: testes de interação e imagens de verificação do editor.
 - `Source/ManualModel.h` e `Source/ManualPanel.h`: captura, intervalos, estado e editor manual.
 - `Source/ManualChecks.cpp`: seleção de trecho, deslocamento real de áudio, transporte e persistência.
-- `Source/CurveChecks.cpp`: pontos, desenho livre, interpolação, áudio, gestos e persistência das curvas.
+- `Source/CurveChecks.cpp`: pontos, desenho livre, interpolação, áudio, gestos, duplo clique e persistência.
+- `Source/AutomaticSelection.h` e `Source/AutomaticChecks.cpp`: sugestão maior/menor, geração de curvas na seleção e verificações.
 - `Assets/Logo.png`: logo original fornecido pelo usuário, incorporado ao binário.
 - `ThirdParty/`: bibliotecas e termos de terceiros.
 

@@ -32,10 +32,10 @@ class ManualDocument {
     std::vector<ManualRegion> edits;
     std::vector<CapturedPitch> points;
     std::vector<PitchCurve> curves;
-    struct History {std::vector<ManualRegion> edits;std::vector<PitchCurve> curves;};
+    struct History {std::vector<ManualRegion> edits;std::vector<PitchCurve> curves;int autoKey=-1,autoMinor=0,autoUncertain=1;};
     std::vector<History> undoHistory;
     int nextCurveId=1;
-    void remember(){if(undoHistory.size()==64)undoHistory.erase(undoHistory.begin());undoHistory.push_back({edits,curves});}
+    void remember(){if(undoHistory.size()==64)undoHistory.erase(undoHistory.begin());undoHistory.push_back({edits,curves,lastAutoKey.load(),lastAutoMinor.load(),lastAutoUncertain.load()});}
     static float curveAt(const PitchCurve& c,double t){auto it=std::lower_bound(c.nodes.begin(),c.nodes.end(),t,[](const CurvePoint& p,double time){return p.time<time;});if(it==c.nodes.begin())return it->midi;if(it==c.nodes.end())return c.nodes.back().midi;const auto& a=*(it-1);return a.midi+float((t-a.time)/(it->time-a.time))*(it->midi-a.midi);}
     std::vector<PitchCurve> withoutRange(double a,double b){std::vector<PitchCurve> out;
         for(const auto& c:curves){if(c.nodes.empty())continue;if(c.nodes.back().time<a||c.nodes.front().time>b){out.push_back(c);continue;}
@@ -47,6 +47,7 @@ class ManualDocument {
     juce::AbstractFifo fifo{4096};std::array<CapturedPitch,4096> incoming{};
     void changed(){revision.fetch_add(1);if(onEdit)onEdit();}
 public:
+    std::atomic<int> lastAutoKey{-1},lastAutoMinor{0},lastAutoUncertain{1};
     std::atomic<bool> capturing{false},timelineAvailable{false},playing{false};
     std::atomic<double> cursor{0};std::atomic<unsigned> revision{0};
     std::function<void()> onEdit;
@@ -73,6 +74,14 @@ public:
             remember();if(it==curves.end()){id=nextCurveId++;curves.push_back({id,std::move(curve)});}else it->nodes=std::move(curve);
         }changed();return id;
     }
+    bool replaceSelection(double start,double end,std::vector<PitchCurve> generated,int key,int minor,int uncertain){
+        if(!std::isfinite(start)||!std::isfinite(end)||end-start<0.025||generated.empty()||key<0||key>11)return false;
+        for(const auto& c:generated){if(c.nodes.size()<2)return false;for(size_t i=0;i<c.nodes.size();++i){const auto& p=c.nodes[i];if(!std::isfinite(p.time)||!std::isfinite(p.midi)||p.time<start||p.time>end||p.midi<0||p.midi>127||(i&&p.time-c.nodes[i-1].time<0.0005))return false;}}
+        {const juce::SpinLock::ScopedLockType g(lock);auto remaining=withoutRange(start,end);for(auto& c:generated){c.id=nextCurveId++;remaining.push_back(std::move(c));}size_t total=0;for(const auto& c:remaining)total+=c.nodes.size();if(remaining.size()>64||total>4096)return false;
+            std::vector<ManualRegion> ranges;for(const auto& r:edits){if(r.end<=start||r.start>=end)ranges.push_back(r);else{if(r.start<start)ranges.push_back({r.start,start,r.semitones});if(r.end>end)ranges.push_back({end,r.end,r.semitones});}}if(ranges.size()>128)return false;
+            remember();edits=std::move(ranges);curves=std::move(remaining);lastAutoKey=key;lastAutoMinor=minor;lastAutoUncertain=uncertain;
+        }changed();return true;
+    }
     bool eraseCurve(int id){ {const juce::SpinLock::ScopedLockType g(lock);auto it=std::find_if(curves.begin(),curves.end(),[&](const auto& c){return c.id==id;});if(it==curves.end())return false;remember();curves.erase(it);}changed();return true;}
     // Never waits for the UI and never allocates on the audio thread.
     void readForAudio(ManualSnapshot& cache){if(!lock.tryEnter())return;cache.count=int(edits.size());for(int i=0;i<cache.count;++i)cache.regions[size_t(i)]=edits[size_t(i)];cache.curveCount=int(curves.size());cache.nodeCount=0;for(size_t c=0;c<curves.size();++c){cache.curves[c]={cache.nodeCount,int(curves[c].nodes.size())};for(const auto& p:curves[c].nodes)cache.nodes[size_t(cache.nodeCount++)]=p;}lock.exit();}
@@ -88,14 +97,14 @@ public:
         }changed();return true;
     }
     int offsetAt(double t){const juce::SpinLock::ScopedLockType g(lock);for(const auto& r:edits)if(t>=r.start&&t<r.end)return r.semitones;return 0;}
-    bool undo(){ {const juce::SpinLock::ScopedLockType g(lock);if(undoHistory.empty())return false;edits=std::move(undoHistory.back().edits);curves=std::move(undoHistory.back().curves);undoHistory.pop_back();}changed();return true;}
+    bool undo(){ {const juce::SpinLock::ScopedLockType g(lock);if(undoHistory.empty())return false;edits=std::move(undoHistory.back().edits);curves=std::move(undoHistory.back().curves);lastAutoKey=undoHistory.back().autoKey;lastAutoMinor=undoHistory.back().autoMinor;lastAutoUncertain=undoHistory.back().autoUncertain;undoHistory.pop_back();}changed();return true;}
     void clearMap(){capturing=false;captureGeneration.fetch_add(1);drain();{const juce::SpinLock::ScopedLockType g(lock);points.clear();}revision.fetch_add(1);}
-    juce::ValueTree save(){drain();const juce::SpinLock::ScopedLockType g(lock);juce::ValueTree tree("ManualV1");
+    juce::ValueTree save(){drain();const juce::SpinLock::ScopedLockType g(lock);juce::ValueTree tree("ManualV1");tree.setProperty("autoKey",lastAutoKey.load(),nullptr);tree.setProperty("autoMinor",lastAutoMinor.load(),nullptr);tree.setProperty("autoUncertain",lastAutoUncertain.load(),nullptr);
         for(const auto& r:edits){juce::ValueTree item("Edit");item.setProperty("start",r.start,nullptr);item.setProperty("end",r.end,nullptr);item.setProperty("shift",r.semitones,nullptr);tree.addChild(item,-1,nullptr);}
         for(const auto& c:curves){juce::ValueTree curve("Curve");curve.setProperty("id",c.id,nullptr);for(const auto& n:c.nodes){juce::ValueTree node("Node");node.setProperty("t",n.time,nullptr);node.setProperty("m",n.midi,nullptr);curve.addChild(node,-1,nullptr);}tree.addChild(curve,-1,nullptr);}
         for(const auto& p:points){juce::ValueTree item("Pitch");item.setProperty("t",p.time,nullptr);item.setProperty("m",p.midi,nullptr);tree.addChild(item,-1,nullptr);}return tree;
     }
-    void restore(const juce::ValueTree& tree){capturing=false;captureGeneration.fetch_add(1);const juce::SpinLock::ScopedLockType g(lock);edits.clear();points.clear();curves.clear();nextCurveId=1;undoHistory.clear();
+    void restore(const juce::ValueTree& tree){capturing=false;captureGeneration.fetch_add(1);const juce::SpinLock::ScopedLockType g(lock);edits.clear();points.clear();curves.clear();nextCurveId=1;undoHistory.clear();lastAutoKey=juce::jlimit(-1,11,int(tree.getProperty("autoKey",-1)));lastAutoMinor=int(tree.getProperty("autoMinor",0))!=0;lastAutoUncertain=int(tree.getProperty("autoUncertain",1))!=0;
         for(const auto& c:tree){if(c.hasType("Edit")&&edits.size()<128){double a=c["start"],b=c["end"];int s=c["shift"];if(std::isfinite(a)&&std::isfinite(b)&&b-a>=0.025&&a>=-3600&&b<=864000&&s>=-12&&s<=12)edits.push_back({a,b,s});}
             else if(c.hasType("Pitch")&&points.size()<36000){double t=c["t"];float m=c["m"];if(std::isfinite(t)&&std::isfinite(m)&&t>=-3600&&t<=864000&&m>=-1&&m<=127)points.push_back({t,m});}}
         size_t totalNodes=0;for(const auto& c:tree)if(c.hasType("Curve")&&curves.size()<64){PitchCurve curve{nextCurveId++,{}};
