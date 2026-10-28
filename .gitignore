@@ -1,0 +1,9 @@
+.DS_Store
+build*/
+*.o
+preview
+Interface.png
+!Assets/Interface.png
+*.vst3/
+*.zip
+work/
